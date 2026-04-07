@@ -1,0 +1,330 @@
+import { useState } from 'react';
+import { runReview, postComment } from '../../api/index.js';
+import { useGitHub } from '../../contexts/GitHubContext.jsx';
+import Spinner from '../Spinner.jsx';
+import IssueCard from '../IssueCard.jsx';
+
+// ─── Shared icon ───────────────────────────────────────────────────────────────
+
+function GithubIcon({ size = 15 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+      <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38
+        0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13
+        -.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66
+        .07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15
+        -.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0
+        1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82
+        1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01
+        1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
+    </svg>
+  );
+}
+
+// ─── Sub-components ────────────────────────────────────────────────────────────
+
+function GitHubWarningBanner({ onConnect }) {
+  return (
+    <div className="gh-warning-banner">
+      <div className="gh-warning-icon">
+        <GithubIcon size={20} />
+      </div>
+      <div className="gh-warning-body">
+        <div className="gh-warning-title">GitHub account not connected</div>
+        <div className="gh-warning-text">
+          Connect your GitHub account so reviews use your personal token — giving
+          access to private repos and a higher API rate limit.
+        </div>
+      </div>
+      <button className="btn btn-connect-gh" onClick={onConnect}>
+        <GithubIcon size={13} /> Connect GitHub
+      </button>
+    </div>
+  );
+}
+
+function GitHubPostButton({ result, onPost }) {
+  const [posting, setPosting]       = useState(false);
+  const [postResult, setPostResult] = useState(null);
+  const [postError, setPostError]   = useState('');
+
+  const handle = async () => {
+    setPosting(true);
+    setPostResult(null);
+    setPostError('');
+    try {
+      const res = await onPost();
+      setPostResult(res);
+    } catch (err) {
+      setPostError(err.message || 'Failed to post comment to GitHub.');
+    } finally {
+      setPosting(false);
+    }
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <button
+        className="btn btn-github"
+        onClick={handle}
+        disabled={posting || !!postResult}
+        title="Post AI review as a comment on the GitHub PR"
+      >
+        {posting ? (
+          <><span className="btn-spinner" /> Posting to GitHub…</>
+        ) : postResult ? (
+          '✅ Posted to GitHub'
+        ) : (
+          <><GithubIcon /> Post Review to GitHub</>
+        )}
+      </button>
+
+      {postError && (
+        <div className="error-banner" style={{ marginBottom: 0 }}>
+          <span>⚠️</span>
+          <div>{postError}</div>
+        </div>
+      )}
+
+      {postResult && (
+        <div className="github-post-result">
+          <span>✅</span>
+          <div>
+            <strong>{postResult.message}</strong>
+            {postResult.general_comment_url && (
+              <>
+                {' '}
+                <a
+                  href={postResult.general_comment_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="gh-link"
+                >
+                  View on GitHub →
+                </a>
+              </>
+            )}
+            {postResult.inline_posted > 0 && (
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                {postResult.inline_posted} inline comment(s) posted directly on diff lines.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RawJson({ data }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="card" style={{ marginTop: 20 }}>
+      <button
+        className="btn btn-ghost btn-sm"
+        onClick={() => setOpen((v) => !v)}
+        style={{ marginBottom: open ? 12 : 0 }}
+      >
+        {open ? '▲ Hide' : '▼ Show'} raw JSON response
+      </button>
+      {open && (
+        <pre className="raw-json">
+          {JSON.stringify(data, null, 2)}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+// ─── Main component ────────────────────────────────────────────────────────────
+
+export default function ReviewTab({ project }) {
+  const [prUrl, setPrUrl]     = useState('');
+  const [loading, setLoading] = useState(false);
+  const [result, setResult]   = useState(null);
+  const [error, setError]     = useState('');
+
+  const { connected, githubUsername, connect } = useGitHub();
+
+  const handleReview = async () => {
+    if (!prUrl.trim()) return;
+    setLoading(true);
+    setResult(null);
+    setError('');
+
+    try {
+      const data = await runReview({
+        pr_url: prUrl.trim(),
+        rules:  project.rules        || [],
+        docs:   project.docs         || '',
+        config: project.review_config || {},
+      });
+      setResult(data);
+    } catch (err) {
+      setError(err.message || 'Review failed. Check the PR URL and try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePostToGitHub = () =>
+    postComment({
+      pr_meta: result.pr_meta,
+      result: {
+        summary:          result.summary,
+        confidence_score: result.confidence_score,
+        issues:           result.issues,
+      },
+    });
+
+  const counts = result?.issues
+    ? result.issues.reduce((acc, { severity }) => {
+        const sev = (severity || 'low').toLowerCase();
+        acc[sev] = (acc[sev] || 0) + 1;
+        return acc;
+      }, {})
+    : {};
+
+  return (
+    <div>
+      {/* ── GitHub connection warning ──────────────────────────────────────── */}
+      {!connected && (
+        <GitHubWarningBanner onConnect={connect} />
+      )}
+
+      {/* ── Input card ─────────────────────────────────────────────────────── */}
+      <div className="card">
+        <div className="card-header">
+          <div className="card-title">
+            <span className="card-title-icon">🤖</span> AI Code Review
+          </div>
+          {connected && githubUsername && (
+            <div className="gh-connected-badge">
+              <GithubIcon size={12} />
+              @{githubUsername}
+            </div>
+          )}
+        </div>
+
+        <div className="review-input-row">
+          <input
+            type="url"
+            placeholder="https://github.com/owner/repo/pull/123"
+            value={prUrl}
+            onChange={(e) => { setPrUrl(e.target.value); setError(''); }}
+            onKeyDown={(e) => e.key === 'Enter' && handleReview()}
+            disabled={loading}
+          />
+          <button
+            className="btn btn-run"
+            onClick={handleReview}
+            disabled={loading || !prUrl.trim()}
+          >
+            {loading ? 'Reviewing…' : '▶ Run AI Review'}
+          </button>
+        </div>
+
+        <div className="review-hint">
+          💡 Paste a GitHub PR URL. The diff is fetched via the GitHub API and reviewed against your project rules &amp; config.
+        </div>
+      </div>
+
+      {/* ── Error ──────────────────────────────────────────────────────────── */}
+      {error && (
+        <div className="error-banner">
+          <span>⚠️</span>
+          <div>
+            {error}
+            {error.toLowerCase().includes('github account not connected') && (
+              <button
+                className="btn-inline-link"
+                onClick={connect}
+                style={{ marginLeft: 8 }}
+              >
+                Connect GitHub →
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Spinner ────────────────────────────────────────────────────────── */}
+      {loading && <Spinner label="Fetching diff from GitHub and running AI review…" />}
+
+      {/* ── Results ────────────────────────────────────────────────────────── */}
+      {result && !loading && (
+        <>
+          {/* Summary + confidence */}
+          <div className="summary-banner">
+            <div className="summary-body">
+              <div className="summary-label">
+                AI Summary
+                {result.pr_meta?.pr_title && (
+                  <span style={{ fontWeight: 400, textTransform: 'none', opacity: .85, marginLeft: 8 }}>
+                    — {result.pr_meta.pr_title}
+                  </span>
+                )}
+              </div>
+              <div className="summary-text">{result.summary || '—'}</div>
+
+              {result.pr_meta?.pr_url && (
+                <a
+                  href={result.pr_meta.pr_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    color: 'rgba(255,255,255,.8)',
+                    fontSize: 12,
+                    marginTop: 8,
+                    display: 'inline-block',
+                    textDecoration: 'underline',
+                  }}
+                >
+                  View PR on GitHub ↗
+                </a>
+              )}
+            </div>
+
+            {result.confidence_score != null && (
+              <div className="confidence-ring">
+                <div className="confidence-value">{result.confidence_score}</div>
+                <div className="confidence-pct">confidence</div>
+              </div>
+            )}
+          </div>
+
+          {/* Stats + Post to GitHub */}
+          <div className="results-toolbar">
+            <div className="review-stats" style={{ marginBottom: 0 }}>
+              <div className="stat-pill total">
+                📋 {result.issues.length} {result.issues.length === 1 ? 'issue' : 'issues'}
+              </div>
+              {counts.high   > 0 && <div className="stat-pill high">🔴 {counts.high} high</div>}
+              {counts.medium > 0 && <div className="stat-pill medium">🟡 {counts.medium} medium</div>}
+              {counts.low    > 0 && <div className="stat-pill low">🟢 {counts.low} low</div>}
+            </div>
+
+            <GitHubPostButton result={result} onPost={handlePostToGitHub} />
+          </div>
+
+          {/* Issue cards */}
+          {result.issues?.length > 0 ? (
+            <div className="issues-list" style={{ marginTop: 16 }}>
+              {result.issues.map((issue, idx) => (
+                <IssueCard key={idx} issue={issue} />
+              ))}
+            </div>
+          ) : (
+            <div className="no-results">
+              <div className="no-results-icon">🎉</div>
+              No issues found — the PR looks great!
+            </div>
+          )}
+
+          {/* Raw JSON */}
+          <RawJson data={result} />
+        </>
+      )}
+    </div>
+  );
+}
