@@ -118,8 +118,14 @@ function AutoReviewCard({ project, connected, onConnect }) {
   const [setupResult, setResult]  = useState(null);
   const [setupError, setError]    = useState('');
 
+  // Normalise repo URL → "owner/repo" slug
+  // Handles: https://github.com/owner/repo, github.com/owner/repo,
+  //          https://github.com/owner/repo.git, ssh variants, etc.
   const repoSlug = project.repo_url
-    ? project.repo_url.replace('https://github.com/', '').replace(/\/$/, '')
+    ? project.repo_url
+        .replace(/^(https?:\/\/)?(www\.)?github\.com\//, '')
+        .replace(/\.git$/, '')
+        .replace(/\/$/, '')
     : null;
 
   const handleSetup = async () => {
