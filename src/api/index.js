@@ -11,10 +11,12 @@ import { auth } from '../firebase.js';
  */
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
-const BASE    = `${API_BASE}/projects`;
-const REVIEW  = `${API_BASE}/review`;
-const COMMENT = `${API_BASE}/comment`;
-const GITHUB  = `${API_BASE}/auth/github`;
+const BASE            = `${API_BASE}/projects`;
+const REVIEW          = `${API_BASE}/review`;
+const COMMENT         = `${API_BASE}/comment`;
+const GITHUB          = `${API_BASE}/auth/github`;
+const SETUP_WORKFLOW  = `${API_BASE}/setup-workflow`;
+const REVIEWS_BASE    = `${API_BASE}/reviews`;
 
 /**
  * Get the current user's Firebase ID token.
@@ -85,3 +87,27 @@ export const disconnectGitHub = () =>
  * Returns { repos: [ { id, name, full_name, html_url, owner, owner_type, private, ... } ] }
  */
 export const getGitHubRepos = () => request(`${GITHUB}/repos`);
+
+// ── Workflow setup ─────────────────────────────────────────────────────────────
+
+/**
+ * Push the AI review GitHub Actions workflow to a repo.
+ * Body: { repo: "owner/repo" }
+ */
+export const setupWorkflow = (body) =>
+  request(SETUP_WORKFLOW, { method: 'POST', body: JSON.stringify(body) });
+
+// ── Review history ─────────────────────────────────────────────────────────────
+
+/**
+ * Fetch review history for a project (most recent first).
+ * Returns { reviews: [...] }
+ */
+export const getReviews = (projectId) =>
+  request(`${REVIEWS_BASE}/${projectId}`);
+
+/**
+ * Delete a single review record.
+ */
+export const deleteReview = (reviewId) =>
+  request(`${REVIEWS_BASE}/${reviewId}`, { method: 'DELETE' });

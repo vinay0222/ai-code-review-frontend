@@ -1,10 +1,10 @@
-import { useState } from 'react';
-import { runReview, postComment } from '../../api/index.js';
+import { useState, useEffect, useCallback } from 'react';
+import { runReview, postComment, setupWorkflow, getReviews, deleteReview } from '../../api/index.js';
 import { useGitHub } from '../../contexts/GitHubContext.jsx';
 import Spinner from '../Spinner.jsx';
 import IssueCard from '../IssueCard.jsx';
 
-// ─── Shared icon ───────────────────────────────────────────────────────────────
+// ─── Icons ─────────────────────────────────────────────────────────────────────
 
 function GithubIcon({ size = 15 }) {
   return (
@@ -26,9 +26,7 @@ function GithubIcon({ size = 15 }) {
 function GitHubWarningBanner({ onConnect }) {
   return (
     <div className="gh-warning-banner">
-      <div className="gh-warning-icon">
-        <GithubIcon size={20} />
-      </div>
+      <div className="gh-warning-icon"><GithubIcon size={20} /></div>
       <div className="gh-warning-body">
         <div className="gh-warning-title">GitHub account not connected</div>
         <div className="gh-warning-text">
@@ -70,19 +68,14 @@ function GitHubPostButton({ result, onPost }) {
         disabled={posting || !!postResult}
         title="Post AI review as a comment on the GitHub PR"
       >
-        {posting ? (
-          <><span className="btn-spinner" /> Posting to GitHub…</>
-        ) : postResult ? (
-          '✅ Posted to GitHub'
-        ) : (
-          <><GithubIcon /> Post Review to GitHub</>
-        )}
+        {posting   ? <><span className="btn-spinner" /> Posting to GitHub…</>
+         : postResult ? '✅ Posted to GitHub'
+         : <><GithubIcon /> Post Review to GitHub</>}
       </button>
 
       {postError && (
         <div className="error-banner" style={{ marginBottom: 0 }}>
-          <span>⚠️</span>
-          <div>{postError}</div>
+          <span>⚠️</span><div>{postError}</div>
         </div>
       )}
 
@@ -92,21 +85,11 @@ function GitHubPostButton({ result, onPost }) {
           <div>
             <strong>{postResult.message}</strong>
             {postResult.general_comment_url && (
-              <>
-                {' '}
-                <a
-                  href={postResult.general_comment_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="gh-link"
-                >
-                  View on GitHub →
-                </a>
-              </>
+              <> <a href={postResult.general_comment_url} target="_blank" rel="noopener noreferrer" className="gh-link">View on GitHub →</a></>
             )}
             {postResult.inline_posted > 0 && (
               <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-                {postResult.inline_posted} inline comment(s) posted directly on diff lines.
+                {postResult.inline_posted} inline comment(s) posted on diff lines.
               </div>
             )}
           </div>
@@ -120,17 +103,264 @@ function RawJson({ data }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="card" style={{ marginTop: 20 }}>
-      <button
-        className="btn btn-ghost btn-sm"
-        onClick={() => setOpen((v) => !v)}
-        style={{ marginBottom: open ? 12 : 0 }}
-      >
+      <button className="btn btn-ghost btn-sm" onClick={() => setOpen(v => !v)} style={{ marginBottom: open ? 12 : 0 }}>
         {open ? '▲ Hide' : '▼ Show'} raw JSON response
       </button>
-      {open && (
-        <pre className="raw-json">
-          {JSON.stringify(data, null, 2)}
-        </pre>
+      {open && <pre className="raw-json">{JSON.stringify(data, null, 2)}</pre>}
+    </div>
+  );
+}
+
+// ─── Enable Auto Review card ───────────────────────────────────────────────────
+
+function AutoReviewCard({ project, connected, onConnect }) {
+  const [setting, setSetting]     = useState(false);
+  const [setupResult, setResult]  = useState(null);
+  const [setupError, setError]    = useState('');
+
+  const repoSlug = project.repo_url
+    ? project.repo_url.replace('https://github.com/', '').replace(/\/$/, '')
+    : null;
+
+  const handleSetup = async () => {
+    if (!repoSlug) return;
+    setSetting(true);
+    setResult(null);
+    setError('');
+    try {
+      const res = await setupWorkflow({ repo: repoSlug });
+      setResult(res);
+    } catch (err) {
+      setError(err.message || 'Failed to set up workflow.');
+    } finally {
+      setSetting(false);
+    }
+  };
+
+  return (
+    <div className="card auto-review-card">
+      <div className="card-header">
+        <div className="card-title">
+          <span className="card-title-icon">⚡</span> Auto AI Review
+        </div>
+        {setupResult && (
+          <span className="badge badge-success">✅ {setupResult.action === 'updated' ? 'Updated' : 'Enabled'}</span>
+        )}
+      </div>
+
+      <p className="auto-review-desc">
+        Push a GitHub Actions workflow to <strong>{repoSlug || 'your repository'}</strong> so
+        every new pull request is reviewed automatically.
+      </p>
+
+      {!repoSlug && (
+        <div className="auto-review-no-repo">
+          ⚠️ Set a repository URL in the Overview tab to enable auto reviews.
+        </div>
+      )}
+
+      {setupError && (
+        <div className="error-banner" style={{ marginBottom: 8 }}>
+          <span>⚠️</span>
+          <div>
+            {setupError}
+            {setupError.toLowerCase().includes('not connected') && (
+              <button className="btn-inline-link" onClick={onConnect} style={{ marginLeft: 8 }}>
+                Connect GitHub →
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {setupResult && (
+        <div className="github-post-result" style={{ marginBottom: 8 }}>
+          <span>✅</span>
+          <div>
+            {setupResult.message}
+            {setupResult.file_url && (
+              <> <a href={setupResult.file_url} target="_blank" rel="noopener noreferrer" className="gh-link">View workflow →</a></>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="auto-review-footer">
+        <button
+          className="btn btn-github"
+          onClick={connected ? handleSetup : onConnect}
+          disabled={setting || (!connected ? false : !repoSlug)}
+        >
+          {setting ? (
+            <><span className="btn-spinner" /> Setting up…</>
+          ) : !connected ? (
+            <><GithubIcon size={13} /> Connect GitHub first</>
+          ) : setupResult ? (
+            <><GithubIcon size={13} /> Re-push workflow</>
+          ) : (
+            <><GithubIcon size={13} /> Enable Auto AI Review</>
+          )}
+        </button>
+
+        <div className="auto-review-meta">
+          Triggers on: <code>pull_request</code> opened, synchronize, reopened
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Review History ────────────────────────────────────────────────────────────
+
+function SeverityPill({ count, sev }) {
+  if (!count) return null;
+  const icons = { high: '🔴', medium: '🟡', low: '🟢' };
+  return <span className={`history-pill ${sev}`}>{icons[sev]} {count}</span>;
+}
+
+function HistoryRow({ review, onDelete }) {
+  const [deleting, setDeleting] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  const date = review.createdAt
+    ? new Date(review.createdAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+    : '—';
+
+  const prLabel = review.pr_title || review.pr_url?.split('/').slice(-1)[0] || '—';
+  const prShort = review.pr_url
+    ? review.pr_url.replace('https://github.com/', '')
+    : '—';
+
+  const handleDelete = async () => {
+    if (!confirm('Delete this review record?')) return;
+    setDeleting(true);
+    try { await onDelete(review.id); }
+    catch { setDeleting(false); }
+  };
+
+  return (
+    <>
+      <tr className={`history-row${expanded ? ' expanded' : ''}`}>
+        <td className="history-td history-td-pr">
+          <div className="history-pr-title">{prLabel}</div>
+          <a href={review.pr_url} target="_blank" rel="noopener noreferrer" className="history-pr-url">
+            {prShort}
+          </a>
+        </td>
+        <td className="history-td history-td-issues">
+          <SeverityPill count={review.issues_high}   sev="high" />
+          <SeverityPill count={review.issues_medium} sev="medium" />
+          <SeverityPill count={review.issues_low}    sev="low" />
+          {review.issues_count === 0 && <span className="history-pill clean">✅ Clean</span>}
+        </td>
+        <td className="history-td history-td-confidence">
+          {review.confidence_score != null ? `${review.confidence_score}%` : '—'}
+        </td>
+        <td className="history-td history-td-trigger">
+          <span className={`trigger-badge trigger-${review.triggered_by}`}>
+            {review.triggered_by}
+          </span>
+        </td>
+        <td className="history-td history-td-date">{date}</td>
+        <td className="history-td history-td-actions">
+          <button
+            className="btn-icon-sm"
+            title="View summary"
+            onClick={() => setExpanded(v => !v)}
+          >
+            {expanded ? '▲' : '▼'}
+          </button>
+          <button
+            className="btn-icon-sm btn-icon-danger"
+            title="Delete"
+            onClick={handleDelete}
+            disabled={deleting}
+          >
+            {deleting ? '…' : '×'}
+          </button>
+        </td>
+      </tr>
+      {expanded && (
+        <tr className="history-summary-row">
+          <td colSpan={6} className="history-summary-td">
+            {review.summary || 'No summary available.'}
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+function ReviewHistory({ projectId }) {
+  const [reviews, setReviews]   = useState([]);
+  const [loading, setLoading]   = useState(true);
+  const [error, setError]       = useState('');
+
+  const load = useCallback(async () => {
+    if (!projectId) return;
+    setLoading(true);
+    setError('');
+    try {
+      const { reviews: data } = await getReviews(projectId);
+      setReviews(data);
+    } catch (err) {
+      setError(err.message || 'Failed to load history.');
+    } finally {
+      setLoading(false);
+    }
+  }, [projectId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleDelete = async (reviewId) => {
+    await deleteReview(reviewId);
+    setReviews(prev => prev.filter(r => r.id !== reviewId));
+  };
+
+  return (
+    <div className="card history-card">
+      <div className="card-header">
+        <div className="card-title">
+          <span className="card-title-icon">📜</span> Review History
+        </div>
+        <button className="btn btn-ghost btn-sm" onClick={load} disabled={loading} title="Refresh">
+          {loading ? '⟳' : '↺ Refresh'}
+        </button>
+      </div>
+
+      {error && (
+        <div className="error-banner"><span>⚠️</span> {error}</div>
+      )}
+
+      {loading && <div className="history-loading"><Spinner label="Loading history…" /></div>}
+
+      {!loading && reviews.length === 0 && (
+        <div className="history-empty">
+          <div style={{ fontSize: 28, marginBottom: 8 }}>🗂️</div>
+          No reviews yet. Run a review above to see history here.
+        </div>
+      )}
+
+      {!loading && reviews.length > 0 && (
+        <div className="history-table-wrap">
+          <table className="history-table">
+            <thead>
+              <tr>
+                <th>Pull Request</th>
+                <th>Issues</th>
+                <th>Confidence</th>
+                <th>Trigger</th>
+                <th>Date</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {reviews.map(r => (
+                <HistoryRow key={r.id} review={r} onDelete={handleDelete} />
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );
@@ -143,6 +373,7 @@ export default function ReviewTab({ project }) {
   const [loading, setLoading] = useState(false);
   const [result, setResult]   = useState(null);
   const [error, setError]     = useState('');
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const { connected, githubUsername, connect } = useGitHub();
 
@@ -154,12 +385,15 @@ export default function ReviewTab({ project }) {
 
     try {
       const data = await runReview({
-        pr_url: prUrl.trim(),
-        rules:  project.rules        || [],
-        docs:   project.docs         || '',
-        config: project.review_config || {},
+        pr_url:     prUrl.trim(),
+        project_id: project.id,
+        rules:      project.rules         || [],
+        docs:       project.docs          || '',
+        config:     project.review_config || {},
       });
       setResult(data);
+      // Trigger history refresh
+      setRefreshKey(k => k + 1);
     } catch (err) {
       setError(err.message || 'Review failed. Check the PR URL and try again.');
     } finally {
@@ -187,21 +421,21 @@ export default function ReviewTab({ project }) {
 
   return (
     <div>
-      {/* ── GitHub connection warning ──────────────────────────────────────── */}
-      {!connected && (
-        <GitHubWarningBanner onConnect={connect} />
-      )}
+      {/* ── GitHub warning ──────────────────────────────────────────────────── */}
+      {!connected && <GitHubWarningBanner onConnect={connect} />}
 
-      {/* ── Input card ─────────────────────────────────────────────────────── */}
-      <div className="card">
+      {/* ── Auto Review setup card ──────────────────────────────────────────── */}
+      <AutoReviewCard project={project} connected={connected} onConnect={connect} />
+
+      {/* ── Manual review input card ────────────────────────────────────────── */}
+      <div className="card" style={{ marginTop: 16 }}>
         <div className="card-header">
           <div className="card-title">
             <span className="card-title-icon">🤖</span> AI Code Review
           </div>
           {connected && githubUsername && (
             <div className="gh-connected-badge">
-              <GithubIcon size={12} />
-              @{githubUsername}
+              <GithubIcon size={12} /> @{githubUsername}
             </div>
           )}
         </div>
@@ -225,7 +459,7 @@ export default function ReviewTab({ project }) {
         </div>
 
         <div className="review-hint">
-          💡 Paste a GitHub PR URL. The diff is fetched via the GitHub API and reviewed against your project rules &amp; config.
+          💡 Paste a GitHub PR URL. The diff is fetched and reviewed against your rules &amp; config.
         </div>
       </div>
 
@@ -236,11 +470,7 @@ export default function ReviewTab({ project }) {
           <div>
             {error}
             {error.toLowerCase().includes('github account not connected') && (
-              <button
-                className="btn-inline-link"
-                onClick={connect}
-                style={{ marginLeft: 8 }}
-              >
+              <button className="btn-inline-link" onClick={connect} style={{ marginLeft: 8 }}>
                 Connect GitHub →
               </button>
             )}
@@ -254,7 +484,6 @@ export default function ReviewTab({ project }) {
       {/* ── Results ────────────────────────────────────────────────────────── */}
       {result && !loading && (
         <>
-          {/* Summary + confidence */}
           <div className="summary-banner">
             <div className="summary-body">
               <div className="summary-label">
@@ -266,25 +495,13 @@ export default function ReviewTab({ project }) {
                 )}
               </div>
               <div className="summary-text">{result.summary || '—'}</div>
-
               {result.pr_meta?.pr_url && (
-                <a
-                  href={result.pr_meta.pr_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{
-                    color: 'rgba(255,255,255,.8)',
-                    fontSize: 12,
-                    marginTop: 8,
-                    display: 'inline-block',
-                    textDecoration: 'underline',
-                  }}
-                >
+                <a href={result.pr_meta.pr_url} target="_blank" rel="noopener noreferrer"
+                  style={{ color: 'rgba(255,255,255,.8)', fontSize: 12, marginTop: 8, display: 'inline-block', textDecoration: 'underline' }}>
                   View PR on GitHub ↗
                 </a>
               )}
             </div>
-
             {result.confidence_score != null && (
               <div className="confidence-ring">
                 <div className="confidence-value">{result.confidence_score}</div>
@@ -293,21 +510,16 @@ export default function ReviewTab({ project }) {
             )}
           </div>
 
-          {/* Stats + Post to GitHub */}
           <div className="results-toolbar">
             <div className="review-stats" style={{ marginBottom: 0 }}>
-              <div className="stat-pill total">
-                📋 {result.issues.length} {result.issues.length === 1 ? 'issue' : 'issues'}
-              </div>
+              <div className="stat-pill total">📋 {result.issues.length} {result.issues.length === 1 ? 'issue' : 'issues'}</div>
               {counts.high   > 0 && <div className="stat-pill high">🔴 {counts.high} high</div>}
               {counts.medium > 0 && <div className="stat-pill medium">🟡 {counts.medium} medium</div>}
               {counts.low    > 0 && <div className="stat-pill low">🟢 {counts.low} low</div>}
             </div>
-
             <GitHubPostButton result={result} onPost={handlePostToGitHub} />
           </div>
 
-          {/* Issue cards */}
           {result.issues?.length > 0 ? (
             <div className="issues-list" style={{ marginTop: 16 }}>
               {result.issues.map((issue, idx) => (
@@ -321,10 +533,14 @@ export default function ReviewTab({ project }) {
             </div>
           )}
 
-          {/* Raw JSON */}
           <RawJson data={result} />
         </>
       )}
+
+      {/* ── Review History ──────────────────────────────────────────────────── */}
+      <div style={{ marginTop: 24 }}>
+        <ReviewHistory key={refreshKey} projectId={project.id} />
+      </div>
     </div>
   );
 }
