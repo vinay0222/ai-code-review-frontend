@@ -1236,6 +1236,12 @@ textarea { min-height: 120px; resize: vertical; line-height: 1.6; }
   line-height: 1.5;
 }
 
+.auto-review-checking {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
 .auto-review-no-repo {
   font-size: 12px;
   color: var(--text-muted);

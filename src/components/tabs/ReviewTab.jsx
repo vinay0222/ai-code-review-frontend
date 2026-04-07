@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { runReview, postComment, setupWorkflow, getReviews, deleteReview } from '../../api/index.js';
+import { runReview, postComment, setupWorkflow, getWorkflowStatus, getReviews, deleteReview } from '../../api/index.js';
 import { useGitHub } from '../../contexts/GitHubContext.jsx';
 import Spinner from '../Spinner.jsx';
 import IssueCard from '../IssueCard.jsx';
@@ -174,8 +174,11 @@ function WorkflowCopyPanel({ yaml, filePath, reason }) {
 // ─── Enable Auto Review card ───────────────────────────────────────────────────
 
 function AutoReviewCard({ project, connected, onConnect }) {
-  const [setting, setSetting]    = useState(false);
-  const [setupResult, setResult] = useState(null);
+  const [setting, setSetting]      = useState(false);
+  const [setupResult, setResult]   = useState(null);
+  const [checking, setChecking]    = useState(false);
+  // null = unknown, true = exists, false = not set up
+  const [workflowExists, setWorkflowExists] = useState(null);
 
   const repoSlug = project.repo_url
     ? project.repo_url
@@ -184,15 +187,36 @@ function AutoReviewCard({ project, connected, onConnect }) {
         .replace(/\/$/, '')
     : null;
 
+  // Check on mount (and when connection changes) whether the workflow file
+  // already exists — so the button state survives a page refresh.
+  useEffect(() => {
+    if (!connected || !repoSlug) return;
+    let cancelled = false;
+    (async () => {
+      setChecking(true);
+      try {
+        const { exists } = await getWorkflowStatus(repoSlug);
+        if (!cancelled) setWorkflowExists(exists);
+      } catch {
+        // Network error — leave as unknown
+      } finally {
+        if (!cancelled) setChecking(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [connected, repoSlug]);
+
   const handleSetup = async () => {
     if (!repoSlug) return;
     setSetting(true);
     setResult(null);
     try {
-      const res = await setupWorkflow({ repo: repoSlug });
+      // Pass project_id so GitHub Actions-triggered reviews are linked to
+      // this project in the history table
+      const res = await setupWorkflow({ repo: repoSlug, project_id: project.id });
       setResult(res);
+      if (res.success) setWorkflowExists(true);
     } catch (err) {
-      // Network-level failure — synthesise a push_failed result
       setResult({
         success: false, push_failed: true,
         reason: err.message || 'Network error.',
@@ -204,7 +228,7 @@ function AutoReviewCard({ project, connected, onConnect }) {
     }
   };
 
-  const pushOk     = setupResult?.success === true;
+  const isEnabled  = workflowExists || setupResult?.success === true;
   const pushFailed = setupResult && !setupResult.success;
 
   return (
@@ -213,16 +237,19 @@ function AutoReviewCard({ project, connected, onConnect }) {
         <div className="card-title">
           <span className="card-title-icon">⚡</span> Auto AI Review
         </div>
-        {pushOk && (
-          <span className="badge badge-success">
-            ✅ {setupResult.action === 'updated' ? 'Updated' : 'Enabled'}
-          </span>
+        {checking && (
+          <span className="auto-review-checking">Checking…</span>
+        )}
+        {!checking && isEnabled && (
+          <span className="badge badge-success">✅ Active</span>
         )}
       </div>
 
       <p className="auto-review-desc">
-        Push a GitHub Actions workflow to <strong>{repoSlug || 'your repository'}</strong> so
-        every new pull request is reviewed automatically.
+        {isEnabled
+          ? <>Workflow is <strong>active</strong> in <strong>{repoSlug}</strong> — every new PR is reviewed automatically.</>
+          : <>Push a GitHub Actions workflow to <strong>{repoSlug || 'your repository'}</strong> so every new pull request is reviewed automatically.</>
+        }
       </p>
 
       {!repoSlug && (
@@ -231,7 +258,7 @@ function AutoReviewCard({ project, connected, onConnect }) {
         </div>
       )}
 
-      {pushOk && (
+      {setupResult?.success && (
         <div className="github-post-result" style={{ marginBottom: 8 }}>
           <span>✅</span>
           <div>
@@ -247,13 +274,13 @@ function AutoReviewCard({ project, connected, onConnect }) {
         <button
           className="btn btn-github"
           onClick={connected ? handleSetup : onConnect}
-          disabled={setting || (!connected ? false : !repoSlug)}
+          disabled={setting || checking || (!connected ? false : !repoSlug)}
         >
           {setting ? (
             <><span className="btn-spinner" /> Setting up…</>
           ) : !connected ? (
             <><GithubIcon size={13} /> Connect GitHub first</>
-          ) : pushOk ? (
+          ) : isEnabled ? (
             <><GithubIcon size={13} /> Re-push workflow</>
           ) : (
             <><GithubIcon size={13} /> Enable Auto AI Review</>

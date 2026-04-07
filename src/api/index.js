@@ -97,6 +97,13 @@ export const getGitHubRepos = () => request(`${GITHUB}/repos`);
 export const setupWorkflow = (body) =>
   request(SETUP_WORKFLOW, { method: 'POST', body: JSON.stringify(body) });
 
+/**
+ * Check whether the AI review workflow file already exists in a repo.
+ * Returns { exists: bool, file_url: string|null }
+ */
+export const getWorkflowStatus = (repo) =>
+  request(`${SETUP_WORKFLOW}/status?repo=${encodeURIComponent(repo)}`);
+
 // ── Review history ─────────────────────────────────────────────────────────────
 
 /**
