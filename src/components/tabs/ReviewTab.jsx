@@ -340,14 +340,18 @@ function HistoryRow({ review, onDelete }) {
             {prShort}
           </a>
         </td>
+        <td className="history-td history-td-verdict">
+          {review.verdict === 'needs_changes'
+            ? <span className="verdict-pill needs-changes">🔴 Needs Changes</span>
+            : review.verdict === 'approve'
+            ? <span className="verdict-pill approve">✅ Approved</span>
+            : <span className="verdict-pill unknown">— —</span>}
+        </td>
         <td className="history-td history-td-issues">
           <SeverityPill count={review.issues_high}   sev="high" />
           <SeverityPill count={review.issues_medium} sev="medium" />
           <SeverityPill count={review.issues_low}    sev="low" />
           {review.issues_count === 0 && <span className="history-pill clean">✅ Clean</span>}
-        </td>
-        <td className="history-td history-td-confidence">
-          {review.confidence_score != null ? `${review.confidence_score}%` : '—'}
         </td>
         <td className="history-td history-td-trigger">
           <span className={`trigger-badge trigger-${review.triggered_by}`}>
@@ -440,8 +444,8 @@ function ReviewHistory({ projectId }) {
             <thead>
               <tr>
                 <th>Pull Request</th>
+                <th>Verdict</th>
                 <th>Issues</th>
-                <th>Confidence</th>
                 <th>Trigger</th>
                 <th>Date</th>
                 <th></th>
@@ -577,6 +581,29 @@ export default function ReviewTab({ project }) {
       {/* ── Results ────────────────────────────────────────────────────────── */}
       {result && !loading && (
         <>
+          {/* Verdict banner */}
+          <div className={`verdict-banner verdict-${result.verdict || 'approve'}`}>
+            <span className="verdict-icon">
+              {result.verdict === 'needs_changes' ? '🔴' : '✅'}
+            </span>
+            <div className="verdict-body">
+              <div className="verdict-label">
+                {result.verdict === 'needs_changes' ? 'Needs Changes' : 'Approved'}
+              </div>
+              <div className="verdict-sub">
+                {result.verdict === 'needs_changes'
+                  ? `${result.issues?.filter(i => i.severity === 'high' || i.severity === 'medium').length} issue(s) require attention before merging.`
+                  : 'No blocking issues found. Safe to merge.'}
+              </div>
+            </div>
+            {result.confidence_score != null && (
+              <div className="confidence-ring">
+                <div className="confidence-value">{result.confidence_score}</div>
+                <div className="confidence-pct">confidence</div>
+              </div>
+            )}
+          </div>
+
           <div className="summary-banner">
             <div className="summary-body">
               <div className="summary-label">
@@ -595,12 +622,6 @@ export default function ReviewTab({ project }) {
                 </a>
               )}
             </div>
-            {result.confidence_score != null && (
-              <div className="confidence-ring">
-                <div className="confidence-value">{result.confidence_score}</div>
-                <div className="confidence-pct">confidence</div>
-              </div>
-            )}
           </div>
 
           <div className="results-toolbar">
