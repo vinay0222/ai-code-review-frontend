@@ -472,6 +472,7 @@ textarea { min-height: 120px; resize: vertical; line-height: 1.6; }
   margin-top: 1px;
 }
 
+/* Kept for backwards-compat; replaced by strictness-grid below */
 .config-strictness-row {
   display: flex;
   align-items: center;
@@ -484,6 +485,151 @@ textarea { min-height: 120px; resize: vertical; line-height: 1.6; }
 .config-strictness-row label { font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; }
 .config-strictness-row select { max-width: 160px; }
 .config-strictness-desc { font-size: 12px; color: var(--text-muted); flex: 1; }
+
+/* ─── Strict-mode toggle ─────────────────────────────────────────────────────── */
+
+.strict-mode-toggle-wrap { padding: 0 4px 4px; }
+
+.strict-mode-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-2);
+  cursor: pointer;
+  transition: border-color .2s, background .2s;
+  user-select: none;
+}
+.strict-mode-toggle:hover       { border-color: var(--accent); }
+.strict-mode-toggle.active      { border-color: #6366f1; background: #eef2ff; }
+.strict-mode-toggle:focus       { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.smt-left { display: flex; align-items: flex-start; gap: 12px; flex: 1; min-width: 0; }
+.smt-icon  { font-size: 22px; flex-shrink: 0; margin-top: 2px; }
+.smt-text  { flex: 1; }
+
+.smt-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.smt-badge {
+  font-size: 10px;
+  font-weight: 800;
+  padding: 2px 7px;
+  border-radius: 10px;
+  letter-spacing: .06em;
+}
+.smt-badge.strict   { background: #6366f1; color: #fff; }
+.smt-badge.standard { background: var(--surface-3, #e2e8f0); color: var(--text-muted); }
+
+.smt-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+/* Toggle switch pill */
+.smt-switch {
+  flex-shrink: 0;
+  width: 40px;
+  height: 22px;
+  border-radius: 11px;
+  background: #cbd5e1;
+  position: relative;
+  transition: background .2s;
+}
+.smt-switch.on { background: #6366f1; }
+
+.smt-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transition: left .2s;
+  box-shadow: 0 1px 3px rgba(0,0,0,.15);
+}
+.smt-switch.on .smt-knob { left: 21px; }
+
+.strict-mode-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px 14px;
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  border-radius: 8px;
+  font-size: 11.5px;
+  color: #4338ca;
+  line-height: 1.5;
+}
+
+/* ─── Strictness option grid ─────────────────────────────────────────────────── */
+
+.strictness-grid {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.strictness-option {
+  flex: 1;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.strictness-option:hover    { border-color: var(--accent); }
+.strictness-option.selected { border-color: var(--accent); background: var(--accent-light); }
+
+.strictness-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  flex-shrink: 0;
+  margin-top: 3px;
+  transition: background .15s, border-color .15s;
+}
+.strictness-option.selected .strictness-dot {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.strictness-label { font-size: 13px; font-weight: 700; color: var(--text); }
+.strictness-desc  { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+.strictness-note {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 8px 12px;
+  background: var(--surface-2);
+  border-radius: 8px;
+  margin-bottom: 4px;
+}
+
+.card-header-sub {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
 
 /* ─── Review tab ────────────────────────────────────────────────────────────── */
 .review-input-row {
