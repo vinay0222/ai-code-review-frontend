@@ -37,9 +37,16 @@ async function request(url, options = {}) {
   const headers = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
-  const res  = await fetch(url, { headers, ...options });
-  const data = await res.json();
+  const res = await fetch(url, { headers, ...options });
 
+  // Guard against HTML error pages (e.g. proxy 404/502 before the backend starts)
+  const contentType = res.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    const text = await res.text();
+    throw new Error(`Server returned HTTP ${res.status}${text.includes('Cannot') ? ` — route not found (${url})` : ''}`);
+  }
+
+  const data = await res.json();
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
   return data;
 }
