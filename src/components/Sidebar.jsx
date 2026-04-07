@@ -1,5 +1,4 @@
 import { useGitHub } from '../contexts/GitHubContext.jsx';
-import { SidebarProjectSkeleton } from './Skeleton.jsx';
 
 function GithubIcon({ size = 14 }) {
   return (
@@ -16,16 +15,6 @@ function GithubIcon({ size = 14 }) {
   );
 }
 
-function LogoutIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-      <polyline points="16 17 21 12 16 7" />
-      <line x1="21" y1="12" x2="9" y2="12" />
-    </svg>
-  );
-}
-
 export default function Sidebar({
   projects, selectedId, onSelect, onNewProject, loading, user, onLogout,
 }) {
@@ -38,59 +27,34 @@ export default function Sidebar({
       .map((w) => w[0]?.toUpperCase() ?? '')
       .join('');
 
-  const displayEmail = user?.email ?? '';
-  const avatarLetter = displayEmail[0]?.toUpperCase() ?? '?';
+  const displayEmail  = user?.email ?? '';
+  const avatarLetter  = displayEmail[0]?.toUpperCase() ?? '?';
 
   return (
     <aside className="sidebar">
-      {/* ── Logo / branding ───────────────────────────────────────────────── */}
+      {/* ── Logo / branding ──────────────────────────────────────────────── */}
       <div className="sidebar-header">
         <div className="sidebar-logo">
-          <div className="logo-icon">⚡</div>
+          <div className="logo-icon">🔍</div>
           <div>
-            <div className="sidebar-title">CodeReview AI</div>
-            <div className="sidebar-subtitle">by iDream</div>
+            <div className="sidebar-title">AI Code Review</div>
+            <div className="sidebar-subtitle">Dashboard</div>
           </div>
         </div>
         <button className="btn-new-project" onClick={onNewProject}>
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-            <line x1="6" y1="1" x2="6" y2="11" /><line x1="1" y1="6" x2="11" y2="6" />
-          </svg>
-          New Project
+          <span>＋</span> New Project
         </button>
       </div>
 
-      {/* ── Projects list ─────────────────────────────────────────────────── */}
-      <div className="sidebar-section" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingRight: 14 }}>
-        <span>Projects</span>
-        {!loading && projects.length > 0 && (
-          <span style={{
-            background: 'rgba(124,102,255,.15)',
-            color: '#a78bfa',
-            fontSize: 10,
-            fontWeight: 700,
-            padding: '1px 7px',
-            borderRadius: 10,
-            border: '1px solid rgba(124,102,255,.2)',
-          }}>
-            {projects.length}
-          </span>
-        )}
-      </div>
+      {/* ── Projects list ────────────────────────────────────────────────── */}
+      <div className="sidebar-section">Projects</div>
 
       <div className="project-list">
-        {loading && (
-          <>
-            <SidebarProjectSkeleton />
-            <SidebarProjectSkeleton />
-            <SidebarProjectSkeleton />
-          </>
-        )}
+        {loading && <div className="sidebar-empty">Loading projects…</div>}
 
         {!loading && projects.length === 0 && (
           <div className="sidebar-empty">
-            No projects yet.<br />
-            <span style={{ opacity: .7 }}>Click <strong>New Project</strong> to get started.</span>
+            No projects yet.<br />Click <strong>New Project</strong> to get started.
           </div>
         )}
 
@@ -102,24 +66,19 @@ export default function Sidebar({
             title={project.name}
           >
             <div className="project-avatar">{initials(project.name)}</div>
-            <div style={{ overflow: 'hidden', flex: 1 }}>
+            <div style={{ overflow: 'hidden' }}>
               <div className="project-item-name">{project.name}</div>
               {project.repo_url && (
                 <div className="project-item-url">
-                  {project.repo_url.replace(/^https?:\/\/(www\.)?github\.com\//, '')}
+                  {project.repo_url.replace(/^https?:\/\//, '')}
                 </div>
               )}
             </div>
-            {selectedId === project.id && (
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="rgba(124,102,255,.6)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                <polyline points="5 2 10 7 5 12" />
-              </svg>
-            )}
           </div>
         ))}
       </div>
 
-      {/* ── GitHub connection ────────────────────────────────────────────── */}
+      {/* ── GitHub connection ─────────────────────────────────────────────── */}
       <div className="sidebar-github">
         <div className="sidebar-section-label">GitHub</div>
         {statusLoading ? (
@@ -131,7 +90,7 @@ export default function Sidebar({
           <div className="gh-status gh-status-connected">
             <div className="gh-status-row">
               <span className="gh-dot gh-dot-connected" />
-              <GithubIcon size={12} />
+              <GithubIcon size={13} />
               <span className="gh-username">@{githubUsername}</span>
             </div>
             <button
@@ -144,13 +103,13 @@ export default function Sidebar({
           </div>
         ) : (
           <button className="gh-connect-btn" onClick={connect} title="Connect your GitHub account">
-            <GithubIcon size={13} />
+            <GithubIcon size={14} />
             Connect GitHub
           </button>
         )}
       </div>
 
-      {/* ── User footer ───────────────────────────────────────────────────── */}
+      {/* ── User footer ──────────────────────────────────────────────────── */}
       {user && (
         <div className="sidebar-user">
           <div className="user-avatar">{avatarLetter}</div>
@@ -163,7 +122,7 @@ export default function Sidebar({
             onClick={onLogout}
             title="Sign out"
           >
-            <LogoutIcon />
+            ↪
           </button>
         </div>
       )}

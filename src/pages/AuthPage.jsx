@@ -67,10 +67,10 @@ export default function AuthPage() {
       <div className="auth-card">
         {/* Logo */}
         <div className="auth-logo">
-          <div className="auth-logo-icon">⚡</div>
+          <div className="auth-logo-icon">🔍</div>
           <div className="auth-logo-text">
-            <span className="auth-logo-title">CodeReview AI</span>
-            <span className="auth-logo-sub">by iDream</span>
+            <span className="auth-logo-title">AI Code Review</span>
+            <span className="auth-logo-sub">Dashboard</span>
           </div>
         </div>
 
@@ -80,7 +80,7 @@ export default function AuthPage() {
         <p className="auth-sub">
           {isSignup
             ? 'Start reviewing code smarter with AI.'
-            : 'Sign in to continue to your dashboard.'}
+            : 'Sign in to your dashboard.'}
         </p>
 
         {error && (

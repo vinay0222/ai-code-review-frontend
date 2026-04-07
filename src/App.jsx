@@ -65,10 +65,11 @@ function useOAuthToast(onRefreshGitHub) {
 
 function Toast({ toast, onDismiss }) {
   if (!toast) return null;
-  const icons = { success: '✓', warning: '⚠', error: '✕' };
   return (
     <div className={`toast toast-${toast.type}`} role="alert">
-      <span className="toast-icon">{icons[toast.type] ?? '●'}</span>
+      <span className="toast-icon">
+        {toast.type === 'success' ? '✅' : toast.type === 'warning' ? '⚠️' : '❌'}
+      </span>
       <span className="toast-message">{toast.message}</span>
       <button className="toast-close" onClick={onDismiss} aria-label="Dismiss">×</button>
     </div>
@@ -147,27 +148,13 @@ function Dashboard() {
           />
         ) : (
           <div className="empty-state">
-            {loading ? (
-              <>
-                <div className="empty-state-icon-wrap">
-                  <div className="spinner" />
-                </div>
-                <h2>Loading projects…</h2>
-                <p>Fetching your workspace…</p>
-              </>
-            ) : (
-              <>
-                <div className="empty-state-icon-wrap">⚡</div>
-                <h2>Select a project</h2>
-                <p>Choose a project from the sidebar, or create a new one to start running AI-powered code reviews.</p>
-                <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
-                  <svg width="13" height="13" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                    <line x1="6" y1="1" x2="6" y2="11" /><line x1="1" y1="6" x2="11" y2="6" />
-                  </svg>
-                  New Project
-                </button>
-              </>
-            )}
+            <div className="empty-state-icon">🔍</div>
+            <h2>{loading ? 'Loading projects…' : 'No project selected'}</h2>
+            <p>
+              {loading
+                ? 'Fetching your projects…'
+                : 'Select a project from the sidebar or create a new one to get started.'}
+            </p>
           </div>
         )}
       </main>
@@ -192,14 +179,8 @@ function AuthGate() {
   if (loading) {
     return (
       <div className="auth-loading">
-        <div style={{
-          width: 40, height: 40,
-          border: '2.5px solid #21262d',
-          borderTopColor: '#7c66ff',
-          borderRadius: '50%',
-          animation: 'spin .7s linear infinite',
-        }} />
-        <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Initialising…</span>
+        <div className="spinner" />
+        <span>Loading…</span>
       </div>
     );
   }
