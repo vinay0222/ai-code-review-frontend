@@ -111,16 +111,72 @@ function RawJson({ data }) {
   );
 }
 
+// ─── Workflow YAML copy panel (shown when auto-push fails) ────────────────────
+
+function WorkflowCopyPanel({ yaml, filePath, reason }) {
+  const [copied, setCopied] = useState(false);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(yaml);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      document.getElementById('wf-yaml-area')?.select();
+    }
+  };
+
+  const download = () => {
+    const blob = new Blob([yaml], { type: 'text/yaml' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = 'ai-review.yml'; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="workflow-copy-panel">
+      <div className="workflow-copy-header">
+        <div className="workflow-copy-title">⚠️ Auto-push failed — add the workflow manually</div>
+        <div className="workflow-copy-reason">{reason}</div>
+      </div>
+
+      <div className="workflow-copy-instructions">
+        <strong>Add it manually in 30 seconds:</strong>
+        <ol>
+          <li>In your repo create the file <code>{filePath}</code></li>
+          <li>Paste the YAML below as its entire content</li>
+          <li>Commit to <code>main</code> — done ✓</li>
+        </ol>
+      </div>
+
+      <div className="workflow-copy-actions">
+        <button className="btn btn-primary btn-sm" onClick={copy}>
+          {copied ? '✅ Copied!' : '📋 Copy YAML'}
+        </button>
+        <button className="btn btn-secondary btn-sm" onClick={download}>
+          ⬇ Download file
+        </button>
+      </div>
+
+      <textarea
+        id="wf-yaml-area"
+        className="workflow-yaml-area"
+        readOnly
+        value={yaml}
+        rows={Math.min(yaml.split('\n').length, 30)}
+        onClick={(e) => e.target.select()}
+      />
+    </div>
+  );
+}
+
 // ─── Enable Auto Review card ───────────────────────────────────────────────────
 
 function AutoReviewCard({ project, connected, onConnect }) {
-  const [setting, setSetting]     = useState(false);
-  const [setupResult, setResult]  = useState(null);
-  const [setupError, setError]    = useState('');
+  const [setting, setSetting]    = useState(false);
+  const [setupResult, setResult] = useState(null);
 
-  // Normalise repo URL → "owner/repo" slug
-  // Handles: https://github.com/owner/repo, github.com/owner/repo,
-  //          https://github.com/owner/repo.git, ssh variants, etc.
   const repoSlug = project.repo_url
     ? project.repo_url
         .replace(/^(https?:\/\/)?(www\.)?github\.com\//, '')
@@ -132,16 +188,24 @@ function AutoReviewCard({ project, connected, onConnect }) {
     if (!repoSlug) return;
     setSetting(true);
     setResult(null);
-    setError('');
     try {
       const res = await setupWorkflow({ repo: repoSlug });
       setResult(res);
     } catch (err) {
-      setError(err.message || 'Failed to set up workflow.');
+      // Network-level failure — synthesise a push_failed result
+      setResult({
+        success: false, push_failed: true,
+        reason: err.message || 'Network error.',
+        workflow_yaml: null,
+        file_path: '.github/workflows/ai-review.yml',
+      });
     } finally {
       setSetting(false);
     }
   };
+
+  const pushOk     = setupResult?.success === true;
+  const pushFailed = setupResult && !setupResult.success;
 
   return (
     <div className="card auto-review-card">
@@ -149,8 +213,10 @@ function AutoReviewCard({ project, connected, onConnect }) {
         <div className="card-title">
           <span className="card-title-icon">⚡</span> Auto AI Review
         </div>
-        {setupResult && (
-          <span className="badge badge-success">✅ {setupResult.action === 'updated' ? 'Updated' : 'Enabled'}</span>
+        {pushOk && (
+          <span className="badge badge-success">
+            ✅ {setupResult.action === 'updated' ? 'Updated' : 'Enabled'}
+          </span>
         )}
       </div>
 
@@ -165,21 +231,7 @@ function AutoReviewCard({ project, connected, onConnect }) {
         </div>
       )}
 
-      {setupError && (
-        <div className="error-banner" style={{ marginBottom: 8 }}>
-          <span>⚠️</span>
-          <div>
-            {setupError}
-            {setupError.toLowerCase().includes('not connected') && (
-              <button className="btn-inline-link" onClick={onConnect} style={{ marginLeft: 8 }}>
-                Connect GitHub →
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
-      {setupResult && (
+      {pushOk && (
         <div className="github-post-result" style={{ marginBottom: 8 }}>
           <span>✅</span>
           <div>
@@ -201,17 +253,25 @@ function AutoReviewCard({ project, connected, onConnect }) {
             <><span className="btn-spinner" /> Setting up…</>
           ) : !connected ? (
             <><GithubIcon size={13} /> Connect GitHub first</>
-          ) : setupResult ? (
+          ) : pushOk ? (
             <><GithubIcon size={13} /> Re-push workflow</>
           ) : (
             <><GithubIcon size={13} /> Enable Auto AI Review</>
           )}
         </button>
-
         <div className="auto-review-meta">
           Triggers on: <code>pull_request</code> opened, synchronize, reopened
         </div>
       </div>
+
+      {/* Fallback: show copy/download panel when auto-push fails */}
+      {pushFailed && setupResult.workflow_yaml && (
+        <WorkflowCopyPanel
+          yaml={setupResult.workflow_yaml}
+          filePath={setupResult.file_path}
+          reason={setupResult.reason}
+        />
+      )}
     </div>
   );
 }
