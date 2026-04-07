@@ -113,8 +113,11 @@ function RawJson({ data }) {
 
 // ─── Workflow YAML copy panel (shown when auto-push fails) ────────────────────
 
-function WorkflowCopyPanel({ yaml, filePath, reason }) {
-  const [copied, setCopied] = useState(false);
+function WorkflowCopyPanel({ yaml, filePath, reason, repoSlug, projectId, onVerified }) {
+  const [copied,     setCopied]   = useState(false);
+  const [verifying,  setVerifying] = useState(false);
+  // null = not checked, 'found' = file exists + current, 'outdated' = exists but stale, 'missing' = not found
+  const [verifyResult, setVerifyResult] = useState(null);
 
   const copy = async () => {
     try {
@@ -134,6 +137,28 @@ function WorkflowCopyPanel({ yaml, filePath, reason }) {
     URL.revokeObjectURL(url);
   };
 
+  const verify = async () => {
+    if (!repoSlug) return;
+    setVerifying(true);
+    setVerifyResult(null);
+    try {
+      const { exists, is_current, file_url } = await getWorkflowStatus(repoSlug, projectId);
+      if (!exists) {
+        setVerifyResult('missing');
+      } else if (is_current === false) {
+        setVerifyResult('outdated');
+        onVerified?.('outdated', file_url);
+      } else {
+        setVerifyResult('found');
+        onVerified?.('found', file_url);
+      }
+    } catch (err) {
+      setVerifyResult('error');
+    } finally {
+      setVerifying(false);
+    }
+  };
+
   return (
     <div className="workflow-copy-panel">
       <div className="workflow-copy-header">
@@ -147,6 +172,7 @@ function WorkflowCopyPanel({ yaml, filePath, reason }) {
           <li>In your repo create the file <code>{filePath}</code></li>
           <li>Paste the YAML below as its entire content</li>
           <li>Commit to <code>main</code> — done ✓</li>
+          <li>Click <strong>Verify</strong> below to confirm the file was found</li>
         </ol>
       </div>
 
@@ -157,7 +183,38 @@ function WorkflowCopyPanel({ yaml, filePath, reason }) {
         <button className="btn btn-secondary btn-sm" onClick={download}>
           ⬇ Download file
         </button>
+        {repoSlug && (
+          <button
+            className="btn btn-verify btn-sm"
+            onClick={verify}
+            disabled={verifying}
+          >
+            {verifying ? <><span className="btn-spinner" /> Checking…</> : '🔍 Verify'}
+          </button>
+        )}
       </div>
+
+      {/* Verification result */}
+      {verifyResult === 'found' && (
+        <div className="verify-result verify-ok">
+          ✅ Workflow found and up to date — Auto AI Review is now active!
+        </div>
+      )}
+      {verifyResult === 'outdated' && (
+        <div className="verify-result verify-warn">
+          ⚠️ Workflow file found but its content is outdated. Use <strong>Re-push workflow</strong> to update it, or replace the file content manually with the YAML below.
+        </div>
+      )}
+      {verifyResult === 'missing' && (
+        <div className="verify-result verify-fail">
+          ❌ File not found yet. Make sure you committed <code>{filePath}</code> to the repository and try again.
+        </div>
+      )}
+      {verifyResult === 'error' && (
+        <div className="verify-result verify-fail">
+          ❌ Could not reach GitHub. Check your connection and try again.
+        </div>
+      )}
 
       <textarea
         id="wf-yaml-area"
@@ -174,11 +231,14 @@ function WorkflowCopyPanel({ yaml, filePath, reason }) {
 // ─── Enable Auto Review card ───────────────────────────────────────────────────
 
 function AutoReviewCard({ project, connected, onConnect }) {
-  const [setting, setSetting]      = useState(false);
-  const [setupResult, setResult]   = useState(null);
-  const [checking, setChecking]    = useState(false);
-  // null = unknown, true = exists, false = not set up
+  const [setting,        setSetting]       = useState(false);
+  const [setupResult,    setResult]        = useState(null);
+  const [checking,       setChecking]      = useState(false);
+  // null = unknown, true = file exists, false = not set up
   const [workflowExists, setWorkflowExists] = useState(null);
+  // null = unknown, true = file matches current template, false = outdated
+  const [isCurrent,      setIsCurrent]     = useState(null);
+  const [fileUrl,        setFileUrl]       = useState(null);
 
   const repoSlug = project.repo_url
     ? project.repo_url
@@ -187,16 +247,19 @@ function AutoReviewCard({ project, connected, onConnect }) {
         .replace(/\/$/, '')
     : null;
 
-  // Check on mount (and when connection changes) whether the workflow file
-  // already exists — so the button state survives a page refresh.
+  // On mount: check file existence AND whether it matches the current template
   useEffect(() => {
     if (!connected || !repoSlug) return;
     let cancelled = false;
     (async () => {
       setChecking(true);
       try {
-        const { exists } = await getWorkflowStatus(repoSlug);
-        if (!cancelled) setWorkflowExists(exists);
+        const { exists, is_current, file_url } = await getWorkflowStatus(repoSlug, project.id);
+        if (!cancelled) {
+          setWorkflowExists(exists);
+          setIsCurrent(is_current);
+          setFileUrl(file_url || null);
+        }
       } catch {
         // Network error — leave as unknown
       } finally {
@@ -204,18 +267,20 @@ function AutoReviewCard({ project, connected, onConnect }) {
       }
     })();
     return () => { cancelled = true; };
-  }, [connected, repoSlug]);
+  }, [connected, repoSlug, project.id]);
 
   const handleSetup = async () => {
     if (!repoSlug) return;
     setSetting(true);
     setResult(null);
     try {
-      // Pass project_id so GitHub Actions-triggered reviews are linked to
-      // this project in the history table
       const res = await setupWorkflow({ repo: repoSlug, project_id: project.id });
       setResult(res);
-      if (res.success) setWorkflowExists(true);
+      if (res.success) {
+        setWorkflowExists(true);
+        setIsCurrent(true);
+        setFileUrl(res.file_url || null);
+      }
     } catch (err) {
       setResult({
         success: false, push_failed: true,
@@ -228,8 +293,59 @@ function AutoReviewCard({ project, connected, onConnect }) {
     }
   };
 
-  const isEnabled  = workflowExists || setupResult?.success === true;
-  const pushFailed = setupResult && !setupResult.success;
+  // Called by WorkflowCopyPanel after the user verifies manually
+  const handleVerified = (status, url) => {
+    if (status === 'found') {
+      setWorkflowExists(true);
+      setIsCurrent(true);
+      setFileUrl(url || null);
+      setResult(null); // hide the copy panel
+    } else if (status === 'outdated') {
+      setWorkflowExists(true);
+      setIsCurrent(false);
+      setFileUrl(url || null);
+    }
+  };
+
+  const isEnabled   = workflowExists || setupResult?.success === true;
+  const needsUpdate = isEnabled && isCurrent === false; // file exists but is stale
+  const pushFailed  = setupResult && !setupResult.success;
+
+  // Status badge
+  let statusBadge = null;
+  if (checking) {
+    statusBadge = <span className="auto-review-checking">Checking…</span>;
+  } else if (isEnabled && needsUpdate) {
+    statusBadge = <span className="badge badge-warn">⚠️ Update available</span>;
+  } else if (isEnabled) {
+    statusBadge = <span className="badge badge-success">✅ Active</span>;
+  }
+
+  // Main action button — only shown when needed
+  let actionBtn = null;
+  if (!connected) {
+    actionBtn = (
+      <button className="btn btn-github" onClick={onConnect}>
+        <GithubIcon size={13} /> Connect GitHub first
+      </button>
+    );
+  } else if (!repoSlug) {
+    actionBtn = null; // warning shown below
+  } else if (!isEnabled) {
+    actionBtn = (
+      <button className="btn btn-github" onClick={handleSetup} disabled={setting || checking}>
+        {setting ? <><span className="btn-spinner" /> Setting up…</> : <><GithubIcon size={13} /> Enable Auto AI Review</>}
+      </button>
+    );
+  } else if (needsUpdate) {
+    // File exists but content is outdated — show a prominent update button
+    actionBtn = (
+      <button className="btn btn-github btn-github-warn" onClick={handleSetup} disabled={setting || checking}>
+        {setting ? <><span className="btn-spinner" /> Updating…</> : <><GithubIcon size={13} /> Update workflow</>}
+      </button>
+    );
+  }
+  // If isEnabled && isCurrent → no button shown (workflow is up to date)
 
   return (
     <div className="card auto-review-card">
@@ -237,17 +353,16 @@ function AutoReviewCard({ project, connected, onConnect }) {
         <div className="card-title">
           <span className="card-title-icon">⚡</span> Auto AI Review
         </div>
-        {checking && (
-          <span className="auto-review-checking">Checking…</span>
-        )}
-        {!checking && isEnabled && (
-          <span className="badge badge-success">✅ Active</span>
-        )}
+        {statusBadge}
       </div>
 
       <p className="auto-review-desc">
-        {isEnabled
-          ? <>Workflow is <strong>active</strong> in <strong>{repoSlug}</strong> — every new PR is reviewed automatically.</>
+        {isEnabled && !needsUpdate
+          ? <>Workflow is <strong>active</strong> in <strong>{repoSlug}</strong> — every new PR is reviewed automatically.
+              {fileUrl && <> <a href={fileUrl} target="_blank" rel="noopener noreferrer" className="gh-link">View file →</a></>}
+            </>
+          : isEnabled && needsUpdate
+          ? <>Workflow file found in <strong>{repoSlug}</strong> but it is <strong>outdated</strong> — the backend URL or project ID may have changed. Update it to keep auto reviews working correctly.</>
           : <>Push a GitHub Actions workflow to <strong>{repoSlug || 'your repository'}</strong> so every new pull request is reviewed automatically.</>
         }
       </p>
@@ -271,32 +386,21 @@ function AutoReviewCard({ project, connected, onConnect }) {
       )}
 
       <div className="auto-review-footer">
-        <button
-          className="btn btn-github"
-          onClick={connected ? handleSetup : onConnect}
-          disabled={setting || checking || (!connected ? false : !repoSlug)}
-        >
-          {setting ? (
-            <><span className="btn-spinner" /> Setting up…</>
-          ) : !connected ? (
-            <><GithubIcon size={13} /> Connect GitHub first</>
-          ) : isEnabled ? (
-            <><GithubIcon size={13} /> Re-push workflow</>
-          ) : (
-            <><GithubIcon size={13} /> Enable Auto AI Review</>
-          )}
-        </button>
+        {actionBtn}
         <div className="auto-review-meta">
           Triggers on: <code>pull_request</code> opened, synchronize, reopened
         </div>
       </div>
 
-      {/* Fallback: show copy/download panel when auto-push fails */}
+      {/* Fallback copy panel — shown when auto-push fails */}
       {pushFailed && setupResult.workflow_yaml && (
         <WorkflowCopyPanel
           yaml={setupResult.workflow_yaml}
           filePath={setupResult.file_path}
           reason={setupResult.reason}
+          repoSlug={repoSlug}
+          projectId={project.id}
+          onVerified={handleVerified}
         />
       )}
     </div>

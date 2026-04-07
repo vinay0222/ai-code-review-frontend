@@ -106,11 +106,19 @@ export const setupWorkflow = (body) =>
   request(SETUP_WORKFLOW, { method: 'POST', body: JSON.stringify(body) });
 
 /**
- * Check whether the AI review workflow file already exists in a repo.
- * Returns { exists: bool, file_url: string|null }
+ * Check whether the AI review workflow file exists in a repo and whether
+ * it matches the current generated workflow.
+ *
+ * Returns { exists: bool, is_current: bool|null, file_url: string|null }
+ *   is_current === true  → file matches what we'd generate now (no update needed)
+ *   is_current === false → file exists but is outdated
+ *   is_current === null  → file not found or compare failed
  */
-export const getWorkflowStatus = (repo) =>
-  request(`${SETUP_WORKFLOW}/status?repo=${encodeURIComponent(repo)}`);
+export const getWorkflowStatus = (repo, projectId = null) => {
+  const params = new URLSearchParams({ repo });
+  if (projectId) params.set('project_id', projectId);
+  return request(`${SETUP_WORKFLOW}/status?${params}`);
+};
 
 // ── Review history ─────────────────────────────────────────────────────────────
 
