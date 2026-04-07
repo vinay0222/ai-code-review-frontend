@@ -1221,3 +1221,191 @@ textarea { min-height: 120px; resize: vertical; line-height: 1.6; }
   transition: opacity .12s;
 }
 .toast-close:hover { opacity: 1; }
+
+/* ─── Repo Picker ────────────────────────────────────────────────────────────── */
+
+.form-label-badge {
+  font-size: 11px;
+  font-weight: 500;
+  background: #dcfce7;
+  color: #166534;
+  padding: 2px 7px;
+  border-radius: 10px;
+  margin-left: 8px;
+}
+
+/* Not-connected state */
+.repo-picker-unconnected {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border: 1.5px dashed var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.repo-picker-unconnected svg { flex-shrink: 0; color: var(--text-muted); }
+.btn-sm { padding: 4px 10px; font-size: 12px; margin-left: auto; }
+
+/* Wrapper */
+.repo-picker-wrap { position: relative; }
+
+/* Trigger button */
+.repo-picker-trigger {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 9px 12px;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color .15s;
+}
+.repo-picker-trigger:hover,
+.repo-picker-trigger:focus { border-color: var(--border-focus); outline: none; }
+.repo-picker-trigger.has-value { background: var(--surface); color: var(--text); }
+.repo-trigger-name { flex: 1; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.repo-trigger-chevron { margin-left: auto; color: var(--text-muted); font-size: 11px; }
+
+/* Private badge */
+.repo-private-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  background: #fef3c7;
+  color: #92400e;
+  padding: 2px 6px;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+/* Dropdown */
+.repo-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.12);
+  z-index: 200;
+  overflow: hidden;
+  max-height: 340px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Search box */
+.repo-search-wrap { padding: 10px; border-bottom: 1px solid var(--border); }
+.repo-search {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1.5px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+  background: var(--surface-2);
+  color: var(--text);
+}
+.repo-search:focus { outline: none; border-color: var(--border-focus); }
+
+.repo-dropdown-error { padding: 8px 12px; font-size: 12px; color: var(--high-text); }
+.repo-empty { padding: 14px 12px; font-size: 13px; color: var(--text-muted); text-align: center; }
+
+/* Scrollable list */
+.repo-list { overflow-y: auto; flex: 1; }
+
+/* Group headers */
+.repo-group-label {
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--surface-2);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+/* Repo items */
+.repo-item {
+  display: block;
+  width: 100%;
+  padding: 9px 12px;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  transition: background .1s;
+}
+.repo-item:hover { background: var(--surface-2); }
+.repo-item.active { background: var(--accent-light); }
+
+.repo-item-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+}
+.repo-item-desc {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.repo-item-lang {
+  margin-top: 3px;
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--accent);
+  background: var(--accent-light);
+  padding: 1px 6px;
+  border-radius: 8px;
+}
+
+/* Manual hint at bottom */
+.repo-manual-hint {
+  padding: 8px 12px;
+  font-size: 11px;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+/* Selected URL strip */
+.repo-selected-url {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+.repo-selected-url a {
+  color: var(--accent);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.repo-selected-url a:hover { text-decoration: underline; }

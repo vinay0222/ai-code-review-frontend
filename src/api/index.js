@@ -79,3 +79,9 @@ export const getGitHubStatus = () => request(`${GITHUB}/status`);
  */
 export const disconnectGitHub = () =>
   request(GITHUB, { method: 'DELETE' });
+
+/**
+ * Fetch all GitHub repos accessible to the user (personal + org).
+ * Returns { repos: [ { id, name, full_name, html_url, owner, owner_type, private, ... } ] }
+ */
+export const getGitHubRepos = () => request(`${GITHUB}/repos`);
