@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { runReview, postComment, setupWorkflow, getWorkflowStatus, getReviews, deleteReview } from '../../api/index.js';
+import { runReview, postComment, setupWorkflow, getWorkflowStatus, getReviews, deleteReview, applyFix } from '../../api/index.js';
 import { useGitHub } from '../../contexts/GitHubContext.jsx';
 import Spinner from '../Spinner.jsx';
 import IssueCard from '../IssueCard.jsx';
@@ -311,9 +311,174 @@ function SeverityPill({ count, sev }) {
   return <span className={`history-pill ${sev}`}>{icons[sev]} {count}</span>;
 }
 
-function HistoryRow({ review, onDelete }) {
-  const [deleting, setDeleting] = useState(false);
-  const [expanded, setExpanded] = useState(false);
+// ─── Diff viewer ───────────────────────────────────────────────────────────────
+
+function DiffViewer({ diff }) {
+  if (!diff) return null;
+
+  const lines = diff.split('\n').map((text, i) => {
+    const type =
+      text.startsWith('+++') || text.startsWith('---') ? 'header'
+      : text.startsWith('@@')                           ? 'hunk'
+      : text.startsWith('+')                            ? 'add'
+      : text.startsWith('-')                            ? 'remove'
+      : 'context';
+    return { text, type, i };
+  });
+
+  // Skip the file header lines (first 4 lines of unified diff), show the hunks
+  const hunks = lines.filter((_, i) => i >= 4);
+
+  if (hunks.length === 0) return <div className="diff-empty">No changes in this file.</div>;
+
+  return (
+    <div className="diff-viewer">
+      {hunks.map(({ text, type, i }) => (
+        <div key={i} className={`diff-line diff-${type}`}>
+          <span className="diff-gutter">{type === 'add' ? '+' : type === 'remove' ? '-' : type === 'hunk' ? '@@' : ' '}</span>
+          <span className="diff-text">{text.replace(/^[+\-@ ]/, '')}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Fix panel ─────────────────────────────────────────────────────────────────
+
+function FixPanel({ review, projectId, onClose }) {
+  const [status,  setStatus]  = useState('idle'); // idle | loading | done | error
+  const [result,  setResult]  = useState(null);
+  const [error,   setError]   = useState('');
+  const [openFile, setOpenFile] = useState(null);
+
+  const handleApply = async () => {
+    setStatus('loading');
+    setError('');
+    try {
+      const data = await applyFix({ pr_url: review.pr_url, project_id: projectId });
+      setResult(data);
+      setStatus('done');
+      if (data.patches?.length > 0) setOpenFile(data.patches[0].path);
+    } catch (err) {
+      setError(err.message || 'Apply fix failed.');
+      setStatus('error');
+    }
+  };
+
+  return (
+    <div className="fix-panel">
+      <div className="fix-panel-header">
+        <div className="fix-panel-title">
+          <span>🔧</span> Apply Fixes with AI
+        </div>
+        <button className="btn-icon-sm" onClick={onClose} title="Close">×</button>
+      </div>
+
+      {/* ── Idle state: description + CTA ─────────────────────────────── */}
+      {status === 'idle' && (
+        <div className="fix-panel-idle">
+          <div className="fix-panel-desc">
+            The AI will analyse the issues found in this review, apply targeted fixes to the source files,
+            and open a new pull request against <code>{review.pr_url?.split('/').slice(3, 5).join('/')}</code> for your review.
+          </div>
+          <div className="fix-panel-meta">
+            <span>📁 Only source files are modified — binary, deleted, and generated files are skipped.</span>
+            <span>🔒 Changes are never auto-merged. You review and merge the new PR yourself.</span>
+          </div>
+          <button className="btn btn-fix-cta" onClick={handleApply}>
+            🤖 Generate &amp; Apply Fixes
+          </button>
+        </div>
+      )}
+
+      {/* ── Loading ────────────────────────────────────────────────────── */}
+      {status === 'loading' && (
+        <div className="fix-panel-loading">
+          <Spinner label="Fetching files, generating fixes, and creating PR on GitHub…" />
+        </div>
+      )}
+
+      {/* ── Error ─────────────────────────────────────────────────────── */}
+      {status === 'error' && (
+        <div className="fix-panel-error">
+          <div className="error-banner"><span>⚠️</span> {error}</div>
+          <button className="btn btn-ghost btn-sm" style={{ marginTop: 8 }} onClick={() => setStatus('idle')}>
+            Try Again
+          </button>
+        </div>
+      )}
+
+      {/* ── Done ──────────────────────────────────────────────────────── */}
+      {status === 'done' && result && (
+        <div className="fix-panel-result">
+
+          {/* Success / no-changes banner */}
+          {result.success ? (
+            <div className="fix-success-banner">
+              <span className="fix-success-icon">🎉</span>
+              <div>
+                <div className="fix-success-title">PR created successfully!</div>
+                <div className="fix-success-sub">{result.overall_summary}</div>
+              </div>
+              <a
+                href={result.pr_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn btn-fix-pr-link"
+              >
+                <GithubIcon size={13} /> View PR #{result.pr_number} →
+              </a>
+            </div>
+          ) : (
+            <div className="fix-no-changes">
+              ℹ️ {result.message || 'AI found no changes to apply.'}
+            </div>
+          )}
+
+          {/* Patch preview */}
+          {result.patches?.length > 0 && (
+            <div className="fix-patches">
+              <div className="fix-patches-title">
+                Patch Preview — {result.files_fixed || result.patches.length} file{result.patches.length !== 1 ? 's' : ''} changed
+              </div>
+
+              <div className="fix-file-tabs">
+                {result.patches.map(p => (
+                  <button
+                    key={p.path}
+                    className={`fix-file-tab${openFile === p.path ? ' active' : ''}`}
+                    onClick={() => setOpenFile(p.path)}
+                  >
+                    {p.path.split('/').pop()}
+                  </button>
+                ))}
+              </div>
+
+              {result.patches.filter(p => p.path === openFile).map(p => (
+                <div key={p.path} className="fix-patch-body">
+                  <div className="fix-patch-path">{p.path}</div>
+                  {p.changes?.length > 0 && (
+                    <ul className="fix-changes-list">
+                      {p.changes.map((c, i) => <li key={i}>{c}</li>)}
+                    </ul>
+                  )}
+                  <DiffViewer diff={p.diff} />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── History row ───────────────────────────────────────────────────────────────
+
+function HistoryRow({ review, projectId, onDelete }) {
+  const [deleting,  setDeleting]  = useState(false);
+  const [expanded,  setExpanded]  = useState(false);
+  const [showFix,   setShowFix]   = useState(false);
 
   const date = review.createdAt
     ? new Date(review.createdAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
@@ -361,9 +526,16 @@ function HistoryRow({ review, onDelete }) {
         <td className="history-td history-td-date">{date}</td>
         <td className="history-td history-td-actions">
           <button
+            className="btn btn-fix-sm"
+            title="Apply Fixes with AI"
+            onClick={() => { setShowFix(v => !v); setExpanded(false); }}
+          >
+            🔧 Fix
+          </button>
+          <button
             className="btn-icon-sm"
             title="View summary"
-            onClick={() => setExpanded(v => !v)}
+            onClick={() => { setExpanded(v => !v); setShowFix(false); }}
           >
             {expanded ? '▲' : '▼'}
           </button>
@@ -377,10 +549,23 @@ function HistoryRow({ review, onDelete }) {
           </button>
         </td>
       </tr>
+
       {expanded && (
         <tr className="history-summary-row">
           <td colSpan={6} className="history-summary-td">
             {review.summary || 'No summary available.'}
+          </td>
+        </tr>
+      )}
+
+      {showFix && (
+        <tr className="history-fix-row">
+          <td colSpan={6} className="history-fix-td">
+            <FixPanel
+              review={review}
+              projectId={projectId}
+              onClose={() => setShowFix(false)}
+            />
           </td>
         </tr>
       )}
@@ -453,7 +638,7 @@ function ReviewHistory({ projectId }) {
             </thead>
             <tbody>
               {reviews.map(r => (
-                <HistoryRow key={r.id} review={r} onDelete={handleDelete} />
+                <HistoryRow key={r.id} review={r} projectId={projectId} onDelete={handleDelete} />
               ))}
             </tbody>
           </table>

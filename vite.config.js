@@ -13,6 +13,7 @@ export default defineConfig({
       '/auth':            'http://localhost:3001',
       '/setup-workflow':  'http://localhost:3001',
       '/reviews':         'http://localhost:3001',
+      '/apply-fix':       'http://localhost:3001',
     },
   },
 });

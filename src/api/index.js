@@ -17,6 +17,7 @@ const COMMENT         = `${API_BASE}/comment`;
 const GITHUB          = `${API_BASE}/auth/github`;
 const SETUP_WORKFLOW  = `${API_BASE}/setup-workflow`;
 const REVIEWS_BASE    = `${API_BASE}/reviews`;
+const APPLY_FIX       = `${API_BASE}/apply-fix`;
 
 /**
  * Get the current user's Firebase ID token.
@@ -118,3 +119,16 @@ export const getReviews = (projectId) =>
  */
 export const deleteReview = (reviewId) =>
   request(`${REVIEWS_BASE}/${reviewId}`, { method: 'DELETE' });
+
+// ── Apply Fixes ────────────────────────────────────────────────────────────────
+
+/**
+ * Ask the AI to apply fixes to a PR's files and open a new PR with the patches.
+ * Body: { pr_url: string, project_id?: string }
+ *
+ * Returns:
+ *   success: true  → { pr_url, branch, overall_summary, patches[], files_fixed }
+ *   success: false → { message, patches: [] }
+ */
+export const applyFix = (body) =>
+  request(APPLY_FIX, { method: 'POST', body: JSON.stringify(body) });
